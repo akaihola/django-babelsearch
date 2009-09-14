@@ -149,7 +149,7 @@ class IndexerTests(TestCase, MeaningHelpers):
         self.home = c('en:home', 'fi:koti')
         self.piano = c('en:piano', 'fi:piano', 'de:klavier')
         self.concerto = c('en:concerto', 'fi:konsertto', 'de:konzert')
-        self.s1 = Sentence.objects.create(text=u'klavierkonzert')
+        self.sentence = Sentence.objects.create(text=u'klavierkonzert')
 
     def assertWordFrequency(self, freq, *lang_words):
         for lang_word in lang_words:
@@ -163,7 +163,7 @@ class IndexerTests(TestCase, MeaningHelpers):
 
     def test_02_index_on_post_save(self):
         self.assertMeanings(
-            (e.meaning for e in self.s1.index_entries.all()),
+            (e.meaning for e in self.sentence.index_entries.all()),
             self.piano, self.concerto)
 
     def test_03_frequencies_updated_on_save(self):
@@ -173,34 +173,33 @@ class IndexerTests(TestCase, MeaningHelpers):
         f(1, 'de:klavier', 'de:konzert')
 
     def test_04_raw_save_not_indexed(self):
-        self.s2 = Sentence(text=u'home pianokonsertto')
-        self.s2.save_base(raw=True) # prevent automatic indexing
-        self.assertFalse([e.meaning for e in self.s2.index_entries.all()])
+        s = Sentence(text=u'home pianokonsertto')
+        s.save_base(raw=True) # prevent automatic indexing
+        self.assertFalse([e.meaning for e in s.index_entries.all()])
         f=self.assertWordFrequency
         f(0, 'fi:home', 'en:home', 'en:piano', 'fi:piano', 'fi:konsertto')
-        IndexEntry.objects.create_for_instance(self.s2)
-        self.s2.delete()
+        IndexEntry.objects.create_for_instance(s)
+        s.delete()
 
     def test_05_unindex_instance(self):
-        IndexEntry.objects.delete_for_instance(self.s1)
+        IndexEntry.objects.delete_for_instance(self.sentence)
         self.assertWordFrequency(0, 'de:klavier', 'de:konzert')
-        IndexEntry.objects.create_for_instance(self.s1)
+        IndexEntry.objects.create_for_instance(self.sentence)
 
     def test_06_index_instance(self):
-        self.s2 = Sentence(text=u'home pianokonsertto')
-        self.s2.save_base(raw=True) # prevent automatic indexing
-        result = IndexEntry.objects.create_for_instance(self.s2)
+        s = Sentence(text=u'home pianokonsertto')
+        s.save_base(raw=True) # prevent automatic indexing
+        result = IndexEntry.objects.create_for_instance(s)
         self.assertMeanings(
-            (e.meaning for e in self.s2.index_entries.all()),
+            (e.meaning for e in s.index_entries.all()),
             self.mold_fungus, self.home, self.piano, self.concerto)
         f=self.assertWordFrequency
         f(1, 'fi:home', 'en:home', 'en:piano', 'fi:piano', 'fi:konsertto')
-        self.s2.delete()
+        s.delete()
 
     def test_07_match_with_search_terms(self):
         terms = u'pianokonsertto'
         results = IndexEntry.objects.search(terms)
-        #self.assertEqual(results.query.as_sql(), '')
         self.assertEqual(list(repr(m) for m in results),
                          ["<IndexEntry: u'klavierkonzert'[1]"
                           " = 3: de:klavier,en:piano,fi:piano>",
