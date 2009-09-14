@@ -1,6 +1,7 @@
 from django.test import TestCase
 
 from django.db import IntegrityError
+from django.db.models import F
 
 from babelsearch.models import Meaning, Word, IndexEntry
 from babelsearch.indexer import registry
@@ -16,25 +17,25 @@ class MeaningCreationTests(TestCase):
         m = Meaning.objects.create()
         m.words.create(normalized_spelling='home', language='fi')
         self.assertEqual([repr(w) for w in m.words.all()],
-                         ['<Word: home (fi)>'])
+                         ['<Word: home (fi/0)>'])
         m.words.create(normalized_spelling='mold', language='en')
         self.assertEqual([repr(w) for w in m.words.all()],
-                         ['<Word: home (fi)>', '<Word: mold (en)>'])
+                         ['<Word: home (fi/0)>', '<Word: mold (en/0)>'])
 
     def test_03_create_meaning_with_words(self):
         m = Meaning.objects.create(
             words=[('en', 'home'), ('fi', 'koti')])
         self.assertEqual([repr(w) for w in m.words.all()],
-                         ['<Word: home (en)>', '<Word: koti (fi)>'])
+                         ['<Word: home (en/0)>', '<Word: koti (fi/0)>'])
         self.assertEqual(Word.objects.count(), 2)
 
     def test_04_create_duplicate_word(self):
         m = Meaning.objects.create(
             words=[('en', 'mold'), ('fi', 'muotti')])
         self.assertEqual([repr(w) for w in m.words.all()],
-                         ['<Word: mold (en)>', '<Word: muotti (fi)>'])
+                         ['<Word: mold (en/0)>', '<Word: muotti (fi/0)>'])
         self.assertEqual(Word.objects.count(), 2)
-        self.assertEqual(repr(Word.objects.all()[1]), '<Word: muotti (fi)>')
+        self.assertEqual(repr(Word.objects.all()[1]), '<Word: muotti (fi/0)>')
 
     def test_05_cannot_add_duplicate_word_with_create(self):
         m = Meaning.objects.create(words=[('en', 'mold'), ('fi', 'vuoka')])
@@ -46,7 +47,7 @@ class MeaningCreationTests(TestCase):
         m = Meaning.objects.create(
             words=[('en', 'mold'), ('fi', 'muotti')])
         self.assertEqual([repr(w) for w in m.words.all()],
-                         ['<Word: mold (en)>', '<Word: muotti (fi)>'])
+                         ['<Word: mold (en/0)>', '<Word: muotti (fi/0)>'])
         mold, created = m.words.get_or_create(
             language='en', normalized_spelling='mold')
         self.assertEqual(mold, m.words.get(normalized_spelling='mold'))
@@ -93,27 +94,52 @@ class MeaningAnalysisTests(TestCase, MeaningHelpers):
     def test_04_lookup_unknown(self):
         self.assertFalse(Meaning.objects.lookup_exact('flabbergasted'))
 
-    def test_05_lookup_compound(self):
+    def test_05_lookup_compound_debug1(self):
+        meanings, words = Meaning.objects.lookup_splitting(u'konsertto')
+        self.assertMeanings(meanings, self.concerto)
+        self.assertEqual(words, [u'konsertto'])
+
+    def test_06_lookup_compound_debug2(self):
+        meanings, words = Meaning.objects.lookup_splitting('piano', 'konsertto')
+        self.assertMeanings(meanings, self.piano, self.concerto)
+        self.assertEqual(words, [u'konsertto', 'piano'])
+
+    def test_07_lookup_compound(self):
+        meanings, words = Meaning.objects.lookup_splitting('pianokonsertto')
+        self.assertMeanings(meanings, self.piano, self.concerto)
+        self.assertEqual(words, [u'konsertto', 'piano'])
+
+    def test_08_lookup_unknown_compound(self):
+        meanings, words = Meaning.objects.lookup_splitting('pianokonsertt')
+        self.assertMeanings(meanings)
+        self.assertEqual(words, [])
+
+    def test_09_lookup_create_unknown(self):
+        meanings, words = Meaning.objects.lookup_splitting(
+            'fuge', create_missing=True)
+        self.assertEqual(meanings.count(), 1)
+        self.assertEqual(words, [u'fuge'])
+        fuge = meanings[0]
+        self.assertEqual(repr(fuge), '<Meaning: 7: None:fuge>')
+        self.assertMeanings(Meaning.objects.lookup_exact('fuge'), fuge)
+        fuge.delete()
+
+    def test_10_lookup_multiple(self):
+        meanings, words = Meaning.objects.lookup(['muotti', 'concerto'])
+        self.assertMeanings(meanings, self.mold_manufacturing, self.concerto)
+        self.assertEqual(words, ['muotti', 'concerto'])
+
+    def test_11_lookup_multiple_with_compound(self):
+        meanings, words = Meaning.objects.lookup(['home', 'pianokonsertto'])
         self.assertMeanings(
-            Meaning.objects.lookup_splitting('pianokonsertto'),
-            self.piano, self.concerto)
+            meanings, self.mold_fungus, self.home, self.piano, self.concerto)
 
-    def test_06_lookup_unknown_compound(self):
-        self.assertFalse(Meaning.objects.lookup_splitting('pianokonsertt'))
-
-    def test_07_lookup_multiple(self):
-        self.assertMeanings(Meaning.objects.lookup(['muotti', 'concerto']),
-                            self.mold_manufacturing, self.concerto)
-
-    def test_08_lookup_multiple_with_compound(self):
+    def test_12_lookup_sentence(self):
+        meanings, words = Meaning.objects.lookup_sentence(
+            u'home pianokonsertto')
         self.assertMeanings(
-            Meaning.objects.lookup(['home', 'pianokonsertto']),
-            self.mold_fungus, self.home, self.piano, self.concerto)
-
-    def test_08_lookup_sentence(self):
-        self.assertMeanings(
-            Meaning.objects.lookup_sentence(u'home pianokonsertto'),
-            self.mold_fungus, self.home, self.piano, self.concerto)
+            meanings, self.mold_fungus, self.home, self.piano, self.concerto)
+        self.assertEqual(words, [u'home', u'konsertto', u'piano'])
 
 class IndexerTests(TestCase, MeaningHelpers):
 
@@ -125,6 +151,13 @@ class IndexerTests(TestCase, MeaningHelpers):
         self.concerto = c('en:concerto', 'fi:konsertto', 'de:konzert')
         self.s1 = Sentence.objects.create(text=u'klavierkonzert')
 
+    def assertWordFrequency(self, freq, *lang_words):
+        for lang_word in lang_words:
+            lang, spelling = lang_word.split(':')
+            word = Word.objects.get(language=lang, normalized_spelling=spelling)
+            self.assertEqual(word.frequency, freq,
+                             '%r: %d != %d' % (lang_word, word.frequency, freq))
+
     def test_01_registry(self):
         self.assertEqual(registry, {Sentence: ('text',)})
 
@@ -133,24 +166,41 @@ class IndexerTests(TestCase, MeaningHelpers):
             (e.meaning for e in self.s1.index_entries.all()),
             self.piano, self.concerto)
 
-    def test_03_raw_save_not_indexed(self):
+    def test_03_frequencies_updated_on_save(self):
+        f=self.assertWordFrequency
+        f(0, 'en:mold', 'fi:home', 'en:home', 'fi:koti', 'en:piano', 'fi:piano',
+          'en:concerto', 'fi:konsertto')
+        f(1, 'de:klavier', 'de:konzert')
+
+    def test_04_raw_save_not_indexed(self):
         self.s2 = Sentence(text=u'home pianokonsertto')
         self.s2.save_base(raw=True) # prevent automatic indexing
         self.assertFalse([e.meaning for e in self.s2.index_entries.all()])
+        f=self.assertWordFrequency
+        f(0, 'fi:home', 'en:home', 'en:piano', 'fi:piano', 'fi:konsertto')
+        IndexEntry.objects.create_for_instance(self.s2)
         self.s2.delete()
 
-    def test_04_index_instance(self):
+    def test_05_unindex_instance(self):
+        IndexEntry.objects.delete_for_instance(self.s1)
+        self.assertWordFrequency(0, 'de:klavier', 'de:konzert')
+        IndexEntry.objects.create_for_instance(self.s1)
+
+    def test_06_index_instance(self):
         self.s2 = Sentence(text=u'home pianokonsertto')
         self.s2.save_base(raw=True) # prevent automatic indexing
-        result = IndexEntry.objects.index_instance(self.s2)
+        result = IndexEntry.objects.create_for_instance(self.s2)
         self.assertMeanings(
             (e.meaning for e in self.s2.index_entries.all()),
             self.mold_fungus, self.home, self.piano, self.concerto)
+        f=self.assertWordFrequency
+        f(1, 'fi:home', 'en:home', 'en:piano', 'fi:piano', 'fi:konsertto')
         self.s2.delete()
 
-    def test_05_match_with_search_terms(self):
+    def test_07_match_with_search_terms(self):
         terms = u'pianokonsertto'
         results = IndexEntry.objects.search(terms)
+        #self.assertEqual(results.query.as_sql(), '')
         self.assertEqual(list(repr(m) for m in results),
                          ["<IndexEntry: u'klavierkonzert'[1]"
                           " = 3: de:klavier,en:piano,fi:piano>",
