@@ -105,3 +105,36 @@ class SetList(object):
 
     def __repr__(self):
         return '<SetList %s>' % unicode(self)
+
+class PrefixCache(dict):
+
+    def __init__(self, model, fieldname):
+        self.model = model
+        self.fieldname = fieldname
+
+    def _instances_with_prefix(self, prefix):
+        return self.model.objects.filter(
+            **{'%s__startswith' % self.fieldname: prefix})
+
+    def contains(self, s):
+        prefix = s[:2]
+        if prefix not in self:
+            self[prefix] = (self._instances_with_prefix(prefix)
+                            .values_list(self.fieldname, flat=True)
+                            .distinct())
+        return s in self[prefix]
+
+    def seed(self, values):
+        qs = self.model.objects.none()
+        prefixes = set(value[:2] for value in values)
+        for prefix in prefixes:
+            if prefix not in self:
+                qs |= self._instances_with_prefix(prefix)
+        for found_value in qs.values_list(self.fieldname, flat=True).distinct():
+            self.add(found_value)
+
+    def add(self, s):
+        self.setdefault(s[:2], set()).add(s)
+
+    def discard(self, s):
+        self.setdefault(s[:2], set()).discard(s)
