@@ -12,7 +12,7 @@ def unindex_old_instance(sender, instance, raw, **kwargs):
     if not raw and instance.pk is not None:
         from babelsearch.models import IndexEntry
         try:
-            old_instance = instance.objects.get(pk=instance.pk)
+            old_instance = sender.objects.get(pk=instance.pk)
             IndexEntry.objects.delete_for_instance(old_instance)
         except sender.DoesNotExist:
             pass
