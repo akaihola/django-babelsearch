@@ -125,6 +125,8 @@ class PrefixCache(dict):
         return s in self[prefix]
 
     def seed(self, values):
+        if not values:
+            return
         qs = self.model.objects.none()
         prefixes = set(value[:2] for value in values)
         for prefix in prefixes:
