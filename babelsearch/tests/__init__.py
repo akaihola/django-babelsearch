@@ -5,4 +5,4 @@ from babelsearch.tests.model_tests import (
     IndexerTests)
 from babelsearch.tests.search_tests import SearchTests
 from babelsearch.tests.datastruct_tests import (
-    SetListTests, AutoDiscardDictTests)
+    SetListTests, AutoDiscardDictTests, PrefixCacheTests)

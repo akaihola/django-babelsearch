@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 
-from django.test import TestCase
+from unittest import TestCase
 
-from babelsearch.datastruct import SetList, AutoDiscardDict
+from babelsearch.datastruct import SetList, AutoDiscardDict, PrefixCache
+from babelsearch.models import Word
 
 class AutoDiscardDictTests(TestCase):
 
@@ -41,49 +42,103 @@ class AutoDiscardDictTests(TestCase):
 class SetListTests(TestCase):
 
     def setUp(self):
-        self.ma = SetList()
+        self.setlist = SetList()
 
-    def assertSetList(self, ma, positions):
+    def assertSetList(self, setlist, positions):
         self.assertEqual(
-            len(ma), len(positions),
+            len(setlist), len(positions),
             'len(%r) [%d] != len(%r) [%d]' % (
-                ma, len(ma), positions, len(positions)))
-        for index, (ma_position, position) in enumerate(zip(ma, positions)):
+                setlist, len(setlist), positions, len(positions)))
+        for index, (setlist_position, position) in enumerate(zip(setlist, positions)):
             self.assertEqual(
-                set(ma_position), set(position),
+                set(setlist_position), set(position),
                 'got[%d] [%r] != expected[%d] [%r]' % (
-                    index, ma_position, index, position))
+                    index, setlist_position, index, position))
 
-    def assertSetListFlat(self, ma, meanings):
-        self.assertEqual(set(ma.flat), set(meanings))
+    def assertSetListFlat(self, setlist, theset):
+        self.assertEqual(set(setlist.flat), set(theset))
 
-    def test_01_add_meaning(self):
-        self.ma[3].add('item1')
-        self.assertSetList(self.ma, [[], [], [], ['item1']])
-        self.assertSetListFlat(self.ma, ['item1'])
+    def test_01_add_to_set(self):
+        self.setlist[3].add('item1')
+        self.assertSetList(self.setlist, [[], [], [], ['item1']])
+        self.assertSetListFlat(self.setlist, ['item1'])
 
     def test_02_truncate(self):
-        self.assertEqual(set(self.ma[3]), set())
-        self.assertSetList(self.ma, [[], [], [], []])
-        self.ma.truncate()
-        self.assertSetList(self.ma, [])
+        self.assertEqual(set(self.setlist[3]), set())
+        self.assertSetList(self.setlist, [[], [], [], []])
+        self.setlist.truncate()
+        self.assertSetList(self.setlist, [])
 
-    def test_03_discard_meaning(self):
-        self.ma[3].add('item1')
-        self.ma[3].discard('item1')
-        self.assertSetListFlat(self.ma, [])
-        self.assertSetList(self.ma, [])
+    def test_03_discard_from_set(self):
+        self.setlist[3].add('item1')
+        self.setlist[3].discard('item1')
+        self.assertSetListFlat(self.setlist, [])
+        self.assertSetList(self.setlist, [])
 
-    def test_04_assign_meanings(self):
-        self.ma[2] = ['item1', 'item2']
-        self.assertSetList(self.ma, [[], [], ['item1', 'item2']])
+    def test_04_assign_set(self):
+        self.setlist[2] = ['item1', 'item2']
+        self.assertSetList(self.setlist, [[], [], ['item1', 'item2']])
 
     def test_05_append_set(self):
-        self.ma[0] = []
-        self.ma.append(['item1', 'item2'])
-        self.assertSetList(self.ma, [[], ['item1', 'item2']])
+        self.setlist[0] = []
+        self.setlist.append(['item1', 'item2'])
+        self.assertSetList(self.setlist, [[], ['item1', 'item2']])
 
     def test_05_initialize(self):
         data = [['item1'], [], ['item2', 'item3']]
-        ma = SetList(data)
-        self.assertSetList(ma, data)
+        setlist = SetList(data)
+        self.assertSetList(setlist, data)
+
+class PrefixCacheTests(TestCase):
+
+    def setUp(self):
+        self.abc = Word.objects.create(normalized_spelling=u'abc')
+        self.efg = Word.objects.create(normalized_spelling=u'efg')
+
+    def tearDown(self):
+        self.abc.delete()
+        self.efg.delete()
+
+    def test_seed_with_no_values(self):
+        c = PrefixCache(Word, 'normalized_spelling')
+        c.seed([])
+        self.assertEqual(c.items(), [])
+
+    def test_seed(self):
+        c = PrefixCache(Word, 'normalized_spelling')
+        c.seed([u'abx', u'efh'])
+        self.assertEqual(sorted(c.items()),
+                         [(u'ab', set([u'abc'])),
+                          (u'ef', set([u'efg']))])
+
+    def test_add(self):
+        c = PrefixCache(Word, 'normalized_spelling')
+        c.add(u'ghi')
+        self.assertEqual(c.items(), [(u'gh', set([u'ghi']))])
+
+    def test_discard(self):
+        c = PrefixCache(Word, 'normalized_spelling')
+        c.add(u'jkl')
+        c.add(u'mno')
+        c.add(u'mnp')
+        self.assertEqual(sorted(c.items()),
+                         [(u'jk', set([u'jkl'])),
+                          (u'mn', set([u'mno', u'mnp']))])
+        c.discard(u'jkl')
+        c.discard(u'mno')
+        self.assertEqual(c.items(), [(u'mn', set([u'mnp'])),
+                                     (u'jk', set([]))])
+
+    def test_contains(self):
+        c = PrefixCache(Word, 'normalized_spelling')
+        c.seed([u'ab-starting-words'])
+        self.assertEqual(c.items(), [(u'ab', set([u'abc']))])
+        self.assertTrue(c.contains(u'abc'))
+        self.assertTrue(c.contains(u'efg'))
+        self.assertEqual(c.items(), [(u'ab', set([u'abc'])),
+                                     (u'ef', set([u'efg']))])
+
+    def test_instances_with_prefix(self):
+        c = PrefixCache(Word, 'normalized_spelling')
+        words = c._instances_with_prefix(u'ab')
+        self.assertEqual(list(words), [self.abc])
