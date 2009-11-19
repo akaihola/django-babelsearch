@@ -119,9 +119,9 @@ class PrefixCache(dict):
     def contains(self, s):
         prefix = s[:2]
         if prefix not in self:
-            self[prefix] = (self._instances_with_prefix(prefix)
-                            .values_list(self.fieldname, flat=True)
-                            .distinct())
+            self[prefix] = set(self._instances_with_prefix(prefix)
+                               .values_list(self.fieldname, flat=True)
+                               .distinct())
         return s in self[prefix]
 
     def seed(self, values):
