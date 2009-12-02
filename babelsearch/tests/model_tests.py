@@ -8,7 +8,7 @@ from django.db.models import F
 from babelsearch.models import Meaning, Word, IndexEntry
 from babelsearch.indexer import registry
 from babelsearch.preprocess import tokenize, lower_without_diacritics, get_words
-from example.testapp.models import Author, Sentence
+from babelsearch.tests.testapp.models import Author, Sentence
 
 class MeaningPreProcessTests(TestCase):
 

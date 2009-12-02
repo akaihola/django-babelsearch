@@ -8,7 +8,7 @@ from babelsearch.models import (
     get_scored_matches, get_scored_matches_for_sentence)
 from babelsearch.indexer import registry
 from babelsearch.datastruct import SetList
-from example.testapp.models import Sentence
+from babelsearch.tests.testapp.models import Sentence
 
 class SearchTests(TestCase):
 
