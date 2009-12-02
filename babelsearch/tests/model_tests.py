@@ -254,7 +254,14 @@ class IndexerTests(TestCase, MeaningHelpers):
         self.assertEqual(' '.join(unicode(w) for w in words), voc_str)
 
     def test_01_registry(self):
-        self.assertEqual(registry, {Sentence: ('authors__name', 'text',)})
+        """
+        The Sentence model should be registered by the ``testapp``
+        application.  There might be other entries in the registry
+        when the test suite is run as part of a project with other
+        apps.
+        """
+        self.assertTrue(Sentence in registry)
+        self.assertEqual(registry[Sentence],  ('authors__name', 'text',))
 
     def test_02_index_on_post_save(self):
         self.assertIndexEntries(
