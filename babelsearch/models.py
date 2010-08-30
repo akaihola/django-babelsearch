@@ -32,7 +32,7 @@ class Word(models.Model):
 
     def __unicode__(self):
         return '%s:%s/%d' % (
-            self.language, self.normalized_spelling, self.frequency)
+            self.language, repr(self.normalized_spelling)[2:-1], self.frequency)
 
 class MeaningManager(models.Manager):
 
@@ -174,10 +174,10 @@ class Meaning(models.Model):
 
     def __unicode__(self):
         words = self.words.order_by('language', 'normalized_spelling')
-        return '%d: %s' % (
+        return u'%d: %s' % (
             self.pk,
-            ','.join('%s:%s' % (w.language, w.normalized_spelling)
-                     for w in words))
+            u','.join(u'%s:%s' % (w.language, repr(w.normalized_spelling)[2:-1])
+                      for w in words))
 
     def add_words(self, words):
         for word in words:
