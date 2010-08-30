@@ -46,3 +46,15 @@ def register(model, fields):
     pre_save.connect(unindex_old_instance, sender=model)
     post_save.connect(index_instance, sender=model)
     pre_delete.connect(unindex_instance, sender=model)
+
+def unregister(model):
+    """Unregisters a model from automatic indexing.
+
+    Return value: the tuple of fields which were being indexed
+    """
+    pre_delete.disconnect(unindex_instance, sender=model)
+    post_save.disconnect(index_instance, sender=model)
+    pre_save.disconnect(unindex_old_instance, sender=model)
+    fields = registry[model]
+    del registry[model]
+    return fields
