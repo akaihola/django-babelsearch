@@ -37,7 +37,7 @@ class Word(models.Model):
 class MeaningManager(models.Manager):
 
     def create(self, *args, **kwargs):
-        words = kwargs.pop('words', {})
+        words = kwargs.pop('words', ())
         meaning = super(MeaningManager, self).create(*args, **kwargs)
         meaning.add_words(words)
         return meaning
