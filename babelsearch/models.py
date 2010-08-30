@@ -50,8 +50,13 @@ class MeaningManager(models.Manager):
         for meaning in meanings[1:]:
             for word in meaning.words.all():
                 meanings[0].words.add(word)
-            meaning.index_entries.all().update(meaning=meanings[0])
+            for indexentry in meaning.index_entries.all():
+                try:
+                    indexentry.update(meaning=meanings[0])
+                except:  # psycopg2.IntegrityError   # TODO: unittest!
+                    indexentry.delete()
             meaning.delete()
+        return meanings[0]
 
     def lookup_exact(self, normalized_spelling):
         """
