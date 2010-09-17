@@ -90,10 +90,10 @@ class MeaningManager(models.Manager):
         """
         if found_words is None:
             found_words = []
-        if len(prefix) < 2:
+        if not prefix:
             # no matches were found
             if create_missing:
-                word = prefix + suffix
+                word = suffix
                 new_meaning = self.create(words=((None, word),))
                 found_words.append(word)
                 meanings = self.filter(pk=new_meaning.pk).distinct()
