@@ -60,6 +60,24 @@ class MeaningManager(models.Manager):
             meaning.delete()
         return meanings[0]
 
+    def split(self, meaning, *part_meanings):
+        """
+        Copies all index entries to part_meanings from the first
+        meaning.  Deletes the first meaning.  Assumes words are
+        already set up correctly.
+
+        TODO: improve performance
+        """
+        for indexentry in meaning.index_entries.all():
+            indexentry.meaning = part_meanings[0]
+            indexentry.save()
+            for part_meaning in part_meanings[1:]:
+                indexentry.id = None
+                indexentry.meaning = part_meaning
+                indexentry.save()
+        meaning.delete()
+        return part_meanings
+
     def lookup_exact(self, normalized_spelling):
         """
         Returns a queryset with all the meanings which have the given
