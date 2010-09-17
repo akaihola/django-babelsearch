@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from django.test import TestCase
+from pprint import pformat
 
 from django.db import IntegrityError
 from django.db.models import F
@@ -9,6 +10,55 @@ from babelsearch.models import Meaning, Word, IndexEntry
 from babelsearch.indexer import registry
 from babelsearch.preprocess import tokenize, lower_without_diacritics, get_words
 from babelsearch.tests.testapp.models import Author, Sentence
+
+
+def tuplify(seq):
+    if isinstance(seq, (list, tuple)):
+        return tuple(tuplify(item) for item in seq)
+    return seq
+
+
+def listify(seq):
+    if isinstance(seq, (list, tuple, set)):
+        return sorted(listify(item) for item in seq)
+    return seq
+
+
+def setify(seq):
+    if isinstance(seq, (list, tuple)):
+        return set(tuplify(item) for item in seq)
+    return seq
+        
+
+def format_word(word):
+    return '%s:%s' % (str(word.language or '?'), str(word.normalized_spelling))
+
+
+def assert_meaning(meaning, *expected_words):
+    actual_words = tuple(format_word(w) for w in meaning.words.all())
+    assert actual_words == expected_words, 'Expected: %s\nGot: %s' % (
+        pformat(expected_words), pformat(actual_words))
+
+
+def dump_meanings():
+    return [[format_word(w) for w in m.words.all()]
+            for m in Meaning.objects.all()]
+
+
+def assert_meanings(*expected_meanings):
+    expected = listify(expected_meanings)
+    actual_meanings = dump_meanings()
+    assert actual_meanings == expected, 'Expected: %s\nGot: %s' % (
+        pformat(expected), pformat(actual_meanings))
+
+
+def assert_index(instance, *expected_meanings):
+    actual_meanings = tuple(
+        [i.order] + [format_word(w) for w in i.meaning.words.all()]
+        for i in instance.index_entries.all())
+    assert actual_meanings == expected_meanings, 'Expected: %s\nGot: %s' % (
+        expected_meanings, listify(actual_meanings))
+
 
 class MeaningPreProcessTests(TestCase):
 
@@ -53,8 +103,7 @@ class MeaningCreationTests(TestCase):
         self.assertEqual([repr(w) for w in m.words.all()],
                          ['<Word: fi:home/0>'])
         m.words.create(normalized_spelling='mold', language='en')
-        self.assertEqual([repr(w) for w in m.words.all()],
-                         ['<Word: fi:home/0>', '<Word: en:mold/0>'])
+        assert_meaning(m, 'en:mold', 'fi:home')
 
     def test_03_create_meaning_with_words(self):
         m = Meaning.objects.create(
@@ -111,9 +160,38 @@ class MeaningHelpers(object):
         for meanings, expected_meanings in zip(got_tree, expected_tree):
             self.assertMeanings(meanings, *expected_meanings)
 
+    def assert_meaning_changes(self, removed=(), added=()):
+        new_meanings = dump_meanings()
+        try:
+            old_meanings = self.previous_meanings_dump
+        except AttributeError:
+            actual_removed = ()
+            actual_added = new_meanings
+        else:
+            actual_removed = setify(old_meanings).difference(
+                setify(new_meanings))
+            actual_added = setify(new_meanings).difference(
+                setify(old_meanings))
+        self.previous_meanings_dump = new_meanings
+        assert (not setify(removed).symmetric_difference(setify(actual_removed)) and
+                not setify(added).symmetric_difference(setify(actual_added))), (
+            'Expected:\nremoved=%r,\nadded=%r\nGot:\nremoved=%r,\nadded=%r' % (
+                listify(removed), listify(added),
+                listify(actual_removed), listify(actual_added)))
+        
     def create_meaning(self, *words):
         return Meaning.objects.create(
             words=[item.split(':') for item in words])
+
+    def lookup_meanings(self, word):
+        return Meaning.objects.lookup_exact(word)
+
+    def lookup_one_meaning(self, word):
+        return self.lookup_meanings(word)[0]
+
+    def new_sentence(self, text):
+        return Sentence.objects.create(text=text)
+
 
 class MeaningAnalysisTests(TestCase, MeaningHelpers):
 
@@ -165,24 +243,46 @@ class MeaningAnalysisTests(TestCase, MeaningHelpers):
     def test_09_lookup_create_unknown(self):
         meanings, words = Meaning.objects.lookup_splitting(
             'fuge', create_missing=True)
-        self.assertEqual(meanings.count(), 1)
-        self.assertEqual(words, [u'fuge'])
-        fuge = meanings[0]
-        self.assertEqual(repr(fuge), '<Meaning: 7: None:fuge>')
+        assert_meanings(['en:mold', 'fi:home'],
+                        ['en:mold', 'fi:vuoka'],
+                        ['en:mold', 'fi:muotti'],
+                        ['en:home', 'fi:koti'],
+                        ['de:klavier', 'en:piano', 'fi:piano'],
+                        ['de:konzert', 'en:concerto', 'fi:konsertto'],
+                        ['?:fuge'])
+        fuge, = meanings
         self.assertMeanings(Meaning.objects.lookup_exact('fuge'), fuge)
         fuge.delete()
 
-    def test_10_lookup_multiple(self):
+    def test_10_lookup_create_extra_letter(self):
+        meanings, words = Meaning.objects.lookup_splitting(
+            'kotipianon', create_missing=True)
+        assert_meanings(['en:mold', 'fi:home'],
+                        ['en:mold', 'fi:vuoka'],
+                        ['en:mold', 'fi:muotti'],
+                        ['en:home', 'fi:koti'],
+                        ['de:klavier', 'en:piano', 'fi:piano'],
+                        ['de:konzert', 'en:concerto', 'fi:konsertto'],
+                        ['?:n'])
+
+    def test_11_lookup_extra_letter(self):
+        n = self.create_meaning('fi:n')
+        meanings, words = Meaning.objects.lookup_splitting(
+            'kotipianon', create_missing=False)
+        self.assertMeanings(meanings, self.home, self.piano, n)
+        self.assertEqual(words, [u'n', u'piano', u'koti'])
+
+    def test_12_lookup_multiple(self):
         meanings, words = Meaning.objects.lookup(['muotti', 'concerto'])
         self.assertMeanings(meanings, self.mold_manufacturing, self.concerto)
         self.assertEqual(words, set(['concerto', 'muotti']))
 
-    def test_11_lookup_multiple_with_compound(self):
+    def test_13_lookup_multiple_with_compound(self):
         meanings, words = Meaning.objects.lookup(['home', 'pianokonsertto'])
         self.assertMeanings(
             meanings, self.mold_fungus, self.home, self.piano, self.concerto)
 
-    def test_12_lookup_ordered(self):
+    def test_14_lookup_ordered(self):
         meaning_tree, words = Meaning.objects.lookup_ordered(
             ['home', 'pianokonsertto', 'piano', 'home', 'konsertto'])
         self.assertMeaningTree(
@@ -194,7 +294,7 @@ class MeaningAnalysisTests(TestCase, MeaningHelpers):
             (self.concerto,))
         self.assertEqual(words, set([u'konsertto', 'home', 'piano']))
 
-    def test_13_lookup_sentence(self):
+    def test_15_lookup_sentence(self):
         meaning_tree, words = Meaning.objects.lookup_sentence(
             u'home pianokonsertto')
         self.assertMeaningTree(
@@ -205,6 +305,7 @@ class MeaningAnalysisTests(TestCase, MeaningHelpers):
             meaning_tree.flat,
             self.mold_fungus, self.home, self.piano, self.concerto)
         self.assertEqual(words, set([u'konsertto', u'home', u'piano']))
+
 
 class IndexerTests(TestCase, MeaningHelpers):
 
@@ -332,31 +433,42 @@ class IndexerTests(TestCase, MeaningHelpers):
         """
         s1 = Sentence.objects.create(text=u'violin sonata')
         s2 = Sentence.objects.create(text=u'sonaatti viululle')
+
         m1s = Meaning.objects.lookup_exact(u'sonata')
         self.assertEqual(len(m1s), 1)
         m1 = m1s[0]
         self.assertEqual(repr(m1), '<Meaning: 7: None:sonata>')
+
         m2s = Meaning.objects.lookup_exact(u'sonaatti')
         self.assertEqual(len(m2s), 1)
         m2 = m2s[0]
         self.assertEqual(repr(m2), '<Meaning: 8: None:sonaatti>')
-        self.assertEqual([unicode(e) for e in s1.index_entries.all()],
-                         [u"[?: violin sonata][1] = 6: None:violin",
-                          u"[?: violin sonata][2] = 7: None:sonata"])
-        self.assertEqual([unicode(e) for e in s2.index_entries.all()],
-                         [u"[?: sonaatti viululle][1] = 8: None:sonaatti",
-                          u"[?: sonaatti viululle][2] = 9: None:viululle"])
+
+        assert_meanings(['en:mold', 'fi:home'],
+                        ['en:home', 'fi:koti'],
+                        ['de:klavier', 'en:piano', 'fi:piano'],
+                        ['de:konzert', 'en:concerto', 'fi:konsertto'],
+                        ['?:goethe'],
+                        ['?:violin'],
+                        ['?:sonata'],
+                        ['?:sonaatti'],
+                        ['?:viululle'])
+        assert_index(s1, (1, '?:violin'), (2, '?:sonata'))
+        assert_index(s2, (1, '?:sonaatti'), (2, '?:viululle'))
+
         Meaning.objects.join(m1, m2)
-        self.assertEqual([unicode(e) for e in s1.index_entries.all()],
-                         [u"[?: violin sonata][1]"
-                          u" = 6: None:violin",
-                          u"[?: violin sonata][2]"
-                          u" = 7: None:sonaatti,None:sonata"])
-        self.assertEqual([unicode(e) for e in s2.index_entries.all()],
-                         [u"[?: sonaatti viululle][1]"
-                          " = 7: None:sonaatti,None:sonata",
-                          u"[?: sonaatti viululle][2]"
-                          " = 9: None:viululle"])
+
+        assert_meanings(['en:mold', 'fi:home'],
+                        ['en:home', 'fi:koti'],
+                        ['de:klavier', 'en:piano', 'fi:piano'],
+                        ['de:konzert', 'en:concerto', 'fi:konsertto'],
+                        ['?:goethe'],
+                        ['?:violin'],
+                        ['?:sonaatti', '?:sonata'],
+                        ['?:viululle'])
+        assert_index(s1, (1, '?:violin'), (2, '?:sonaatti', '?:sonata'))
+        assert_index(s2, (1, '?:sonaatti', '?:sonata'), (2, '?:viululle'))
+
         self.assertEqual(repr(m1), '<Meaning: 7: None:sonaatti,None:sonata>')
         self.assertEqual(m2.pk, None)
         s1.delete()
@@ -381,3 +493,50 @@ class IndexerTests(TestCase, MeaningHelpers):
         self.assertEqual(m3.pk, None)
         s1.delete()
         s2.delete()
+
+
+class ComplexIndexer_Tests(TestCase, MeaningHelpers):
+    def test_01_build_vocabulary(self):
+        # meanings Capitalized
+        # sentences in_lower_case
+
+        assert_meanings_diff = self.assert_meaning_changes
+        
+        assert_meanings()  # no meanings initially
+
+        string_quartet = self.new_sentence('string quartet')
+        assert_index(string_quartet, [1, '?:string'], [2, '?:quartet'])
+        assert_meanings_diff(added=[['?:string'],
+                                    ['?:quartet']])
+
+        jousikvartetto = self.new_sentence('jousikvartetto')
+        assert_index(jousikvartetto, [1, '?:jousikvartetto'])
+        assert_meanings_diff(added=[['?:jousikvartetto']])
+
+        String = self.create_meaning('fi:jousi', 'en:string')
+        assert_meanings_diff(added=[['en:string', 'fi:jousi']])
+        IndexEntry.objects.index_instance(jousikvartetto)
+        assert_index(jousikvartetto, [1, '?:jousikvartetto'])
+
+        # longest match used: not jousi-kvartetto but jousikvartetto
+        Quartet = self.create_meaning('fi:kvartetto', 'en:quartet')
+        assert_meanings_diff(added=[['en:quartet', 'fi:kvartetto']])
+        IndexEntry.objects.index_instance(jousikvartetto)
+        assert_index(jousikvartetto, [1, '?:jousikvartetto'])
+
+        # reindex jousikvartetto as jousi-kvartetto
+        Meaning.objects.split(self.lookup_one_meaning(u'jousikvartetto'),
+                              String, Quartet)
+        assert_index(jousikvartetto,
+                     [1, 'en:string', 'fi:jousi'],
+                     [1, 'en:quartet', 'fi:kvartetto'])
+        assert_meanings_diff(removed=[['?:jousikvartetto']])
+
+        quartet_in_g_str = self.new_sentence('Quartet in g (str)')
+        assert_index(quartet_in_g_str,
+                     [1, '?:quartet'],
+                     [1, 'en:quartet', 'fi:kvartetto'],
+                     [2, '?:in'],
+                     [3, '?:g'],
+                     [4, '?:str'])
+        assert_meanings_diff(added=[['?:g'], ['?:in'], ['?:str']])
