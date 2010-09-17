@@ -77,5 +77,5 @@ INSTALLED_APPS = (
     'django.contrib.sessions',
     'django.contrib.sites',
     'babelsearch',
-    'example.testapp',
+    'babelsearch.tests.testapp',
 )
