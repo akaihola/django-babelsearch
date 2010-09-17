@@ -48,15 +48,15 @@ class MeaningManager(models.Manager):
         """
         Copies all words to the first meaning from all the rest of the
         meanings.  Deletes the rest of the meanings.
+
+        TODO: improve performance
         """
         for meaning in meanings[1:]:
             for word in meaning.words.all():
                 meanings[0].words.add(word)
             for indexentry in meaning.index_entries.all():
-                try:
-                    indexentry.update(meaning=meanings[0])
-                except:  # psycopg2.IntegrityError   # TODO: unittest!
-                    indexentry.delete()
+                indexentry.meaning = meanings[0]
+                indexentry.save()
             meaning.delete()
         return meanings[0]
 
