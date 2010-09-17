@@ -12,6 +12,7 @@ class Word(models.Model):
     normalized_spelling = models.CharField(max_length=100)
     language = models.CharField(max_length=5, null=True)
     frequency = models.IntegerField(default=0)
+    indexable = models.BooleanField(default=True)
 
     @classmethod
     def _get_cache(cls):
