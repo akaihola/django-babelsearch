@@ -249,6 +249,7 @@ class IndexEntry(models.Model):
 
     class Meta:
         unique_together = ('content_type', 'object_id', 'order', 'meaning'),
+        ordering = 'content_type', 'object_id', 'order',
 
 def get_index_info_for_meanings(model, meanings):
     """
