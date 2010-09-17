@@ -30,6 +30,7 @@ class Word(models.Model):
 
     class Meta:
         unique_together = ('normalized_spelling', 'language'),
+        ordering = 'language', 'normalized_spelling',
 
     def __unicode__(self):
         return '%s:%s/%d' % (
