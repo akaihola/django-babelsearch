@@ -108,7 +108,9 @@ class MeaningManager(models.Manager):
                     meanings = prefixes
                 else:
                     suffixes, w = self.lookup_splitting(
-                        suffix, found_words=found_words)
+                        suffix,
+                        create_missing=create_missing,
+                        found_words=found_words)
                     if suffixes:
                         # compound word match found
                         found_words.append(prefix)
