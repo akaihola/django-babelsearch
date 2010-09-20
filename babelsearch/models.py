@@ -52,7 +52,7 @@ class Word(models.Model):
 
     @classmethod
     def _get_cache(cls):
-        if not hasattr(Word, '_cache_object'):
+        if not hasattr(cls, '_cache'):
             cls._cache = PrefixCache(cls, 'normalized_spelling')
         return cls._cache
 
