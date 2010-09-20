@@ -132,7 +132,7 @@ class PrefixCache(dict):
         for prefix in prefixes:
             if prefix not in self:
                 qs |= self._instances_with_prefix(prefix)
-        for found_value in qs.values_list(self.fieldname, flat=True).distinct():
+        for found_value in qs.values_list(self.fieldname, flat=True):
             self.add(found_value)
 
     def add(self, s):
