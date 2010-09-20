@@ -4,9 +4,45 @@ from django.db.models.signals import post_syncdb
 from django.conf import settings
 from django.contrib.contenttypes import generic
 from django.contrib.contenttypes.models import ContentType
+import operator
 
 from babelsearch.datastruct import SetList, PrefixCache
 from babelsearch.preprocess import get_words, get_instance_words
+
+
+def unique_substrings(s):
+    found = set()
+    for i in range(len(s)):
+        for j in range(i+1, len(s)+1):
+            substring = s[i:j]
+            if substring not in found:
+                yield substring
+                found.add(substring)
+
+
+def divisions(s, vocabulary):
+    for i in range(1, len(s)+1):
+        substring = s[:i]
+        if substring in vocabulary:
+            if i == len(s):
+                yield substring,
+            else:
+                for subsubstrings in divisions(s[i:], vocabulary):
+                    yield (substring,) + subsubstrings
+
+
+def sort_divisions(divs):
+    # decorate
+    decdivs = [(len(div), -min(len(substring) for substring in div), div)
+               for div in divs]
+    decdivs.sort()
+    # undecorate
+    return [item[2] for item in decdivs]
+
+
+def sorted_divisions(s, vocabulary):
+    return sort_divisions(divisions(s, vocabulary))
+
 
 class Word(models.Model):
     normalized_spelling = models.CharField(max_length=100)
@@ -88,13 +124,13 @@ class MeaningManager(models.Manager):
         else:
             return self.none()
 
-    def lookup_splitting(self,
-                         prefix, suffix=u'',
+    def lookup_splitting(self, word,
                          create_missing=False, found_words=None):
         """
         Tries to find meanings for the given word in the dictionary,
         possibly splitting the word up into multiple pieces and
-        assuming it's a compound word.
+        assuming it's a compound word.  Prefers a split with as few
+        and long parts as possible.
 
         If no matches are found and `create_missing == True`, the word
         is added to the dictionary and attached to a new meaning.
@@ -106,40 +142,28 @@ class MeaningManager(models.Manager):
         The list of words is either the original word or the parts it
         was split up into.
         """
-        if found_words is None:
-            found_words = []
-        if not prefix:
-            # no matches were found
-            if create_missing:
-                word = suffix
+        all_substrings = unique_substrings(word)
+        found_words = Word.objects.filter(
+            normalized_spelling__in=all_substrings, indexable=True)
+        found_spellings = found_words.values_list(
+            'normalized_spelling', flat=True)
+        possible_divisions = sorted_divisions(word, found_spellings)
+
+        if possible_divisions:
+            found_words = possible_divisions[0]
+            meanings_for_division = (self.lookup_exact(w)
+                                     for w in found_words)
+            meanings = reduce(operator.or_, meanings_for_division).distinct()
+
+        else:  # no divisions found
+            if create_missing:  # add word to index and use it as the match
                 new_meaning = self.create(words=((None, word),))
-                found_words.append(word)
+                found_words = word,
                 meanings = self.filter(pk=new_meaning.pk).distinct()
-            else:
+            else:  #  don't add word to index, no match
                 meanings = self.none()
-        else:
-            prefixes = self.lookup_exact(prefix).distinct()
-            if prefixes:
-                if not suffix:
-                    # original search term found
-                    found_words.append(prefix)
-                    meanings = prefixes
-                else:
-                    suffixes, w = self.lookup_splitting(
-                        suffix,
-                        create_missing=create_missing,
-                        found_words=found_words)
-                    if suffixes:
-                        # compound word match found
-                        found_words.append(prefix)
-                        meanings = (prefixes | suffixes)
-                    else:
-                        meanings = self.none()
-            else:
-                # no matches for this division, divide one char earlier
-                meanings, sub_words = self.lookup_splitting(
-                    prefix[:-1], prefix[-1] + suffix,
-                    create_missing=create_missing, found_words=found_words)
+                found_words = []
+
         return meanings, found_words
 
     def lookup(self, normalized_spellings, create_missing=False):
@@ -251,8 +275,9 @@ class IndexManager(models.Manager):
                 self.create(content_object=instance,
                             order=order+1,
                             meaning=meaning)
-        Word.objects.filter(normalized_spelling__in=found_words).update(
-            frequency=F('frequency')+1)
+        word_instances = Word.objects.filter(normalized_spelling__in=found_words)
+        word_instances.update(frequency=F('frequency')+1)
+
 
 class IndexEntry(models.Model):
     content_type = models.ForeignKey(ContentType)

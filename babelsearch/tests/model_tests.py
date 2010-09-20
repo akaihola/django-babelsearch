@@ -47,7 +47,7 @@ def dump_meanings():
 
 def assert_meanings(*expected_meanings):
     expected = listify(expected_meanings)
-    actual_meanings = dump_meanings()
+    actual_meanings = listify(dump_meanings())
     assert actual_meanings == expected, 'Expected: %s\nGot: %s' % (
         pformat(expected), pformat(actual_meanings))
 
@@ -223,24 +223,19 @@ class MeaningAnalysisTests(TestCase, MeaningHelpers):
     def test_05_lookup_compound_debug1(self):
         meanings, words = Meaning.objects.lookup_splitting(u'konsertto')
         self.assertMeanings(meanings, self.concerto)
-        self.assertEqual(words, [u'konsertto'])
+        self.assertEqual(words, (u'konsertto',))
 
-    def test_06_lookup_compound_debug2(self):
-        meanings, words = Meaning.objects.lookup_splitting('piano', 'konsertto')
-        self.assertMeanings(meanings, self.piano, self.concerto)
-        self.assertEqual(words, [u'konsertto', 'piano'])
-
-    def test_07_lookup_compound(self):
+    def test_06_lookup_compound(self):
         meanings, words = Meaning.objects.lookup_splitting('pianokonsertto')
         self.assertMeanings(meanings, self.piano, self.concerto)
-        self.assertEqual(words, [u'konsertto', 'piano'])
+        self.assertEqual(words, (u'piano', u'konsertto'))
 
-    def test_08_lookup_unknown_compound(self):
+    def test_07_lookup_unknown_compound(self):
         meanings, words = Meaning.objects.lookup_splitting('pianokonsertt')
         self.assertMeanings(meanings)
         self.assertEqual(words, [])
 
-    def test_09_lookup_create_unknown(self):
+    def test_08_lookup_create_unknown(self):
         meanings, words = Meaning.objects.lookup_splitting(
             'fuge', create_missing=True)
         assert_meanings(['en:mold', 'fi:home'],
@@ -254,45 +249,56 @@ class MeaningAnalysisTests(TestCase, MeaningHelpers):
         self.assertMeanings(Meaning.objects.lookup_exact('fuge'), fuge)
         fuge.delete()
 
-    def test_10_lookup_create_extra_letter(self):
+    def test_09_lookup_create_extra_letter(self):
         meanings, words = Meaning.objects.lookup_splitting(
             'kotipianon', create_missing=True)
-        assert_meanings(['en:mold', 'fi:home'],
+        assert_meanings(['?:kotipianon'],
+                        ['en:mold', 'fi:home'],
                         ['en:mold', 'fi:vuoka'],
                         ['en:mold', 'fi:muotti'],
                         ['en:home', 'fi:koti'],
                         ['de:klavier', 'en:piano', 'fi:piano'],
-                        ['de:konzert', 'en:concerto', 'fi:konsertto'],
-                        ['?:n'])
+                        ['de:konzert', 'en:concerto', 'fi:konsertto'])
 
-    def test_11_lookup_extra_letter(self):
+    def test_10_lookup_extra_letter(self):
         n = self.create_meaning('fi:n')
         meanings, words = Meaning.objects.lookup_splitting(
-            'kotipianon', create_missing=False)
+            u'kotipianon', create_missing=False)
         self.assertMeanings(meanings, self.home, self.piano, n)
-        self.assertEqual(words, [u'n', u'piano', u'koti'])
+        self.assertEqual(words, (u'koti', u'piano', u'n'))
 
-    def test_12_lookup_multiple(self):
+    def test_11_lookup_multiple(self):
         meanings, words = Meaning.objects.lookup(['muotti', 'concerto'])
         self.assertMeanings(meanings, self.mold_manufacturing, self.concerto)
         self.assertEqual(words, set(['concerto', 'muotti']))
 
-    def test_13_lookup_multiple_with_compound(self):
+    def test_12_lookup_multiple_with_compound(self):
         meanings, words = Meaning.objects.lookup(['home', 'pianokonsertto'])
         self.assertMeanings(
             meanings, self.mold_fungus, self.home, self.piano, self.concerto)
 
-    def test_14_lookup_ordered(self):
+    def test_13_lookup_ordered(self):
         meaning_tree, words = Meaning.objects.lookup_ordered(
-            ['home', 'pianokonsertto', 'piano', 'home', 'konsertto'])
+            ['home', 'pianokonsertto', 'piano', 'home', 'konsertto', 'unknown'])
         self.assertMeaningTree(
             meaning_tree,
             (self.mold_fungus, self.home),
             (self.piano, self.concerto),
             (self.piano,),
             (self.mold_fungus, self.home),
-            (self.concerto,))
+            (self.concerto,),
+            ())
         self.assertEqual(words, set([u'konsertto', 'home', 'piano']))
+
+    def test_14_lookup_ordered_create_missing(self):
+        meaning_tree, words = Meaning.objects.lookup_ordered(
+            ['home', 'beef'], create_missing=True)
+        beef = Meaning.objects.get(words__normalized_spelling='beef')
+        self.assertMeaningTree(
+            meaning_tree,
+            (self.mold_fungus, self.home),
+            (beef,))
+        self.assertEqual(words, set([u'beef', 'home']))
 
     def test_15_lookup_sentence(self):
         meaning_tree, words = Meaning.objects.lookup_sentence(
@@ -317,7 +323,13 @@ class IndexerTests(TestCase, MeaningHelpers):
         self.concerto = c('en:concerto', 'fi:konsertto', 'de:konzert')
         self.sentence = Sentence.objects.create(text=u'klavierkonzert')
         self.sentence.authors.create(name='Goethe')
+        self.assertVocabulary(u'de:klavier/1 de:konzert/1 '  #debug
+                              u'en:concerto/0 en:home/0 en:mold/0 en:piano/0 '
+                              u'fi:home/0 fi:konsertto/0 fi:koti/0 fi:piano/0')
         self.sentence.save()
+        self.assertVocabulary(u'None:goethe/1 de:klavier/1 de:konzert/1 '  #debug
+                              u'en:concerto/0 en:home/0 en:mold/0 en:piano/0 '
+                              u'fi:home/0 fi:konsertto/0 fi:koti/0 fi:piano/0')
         self.goethe = Meaning.objects.lookup_exact('goethe')[0]
 
     def assertWordFrequency(self, freq, *lang_words):
@@ -540,3 +552,14 @@ class ComplexIndexer_Tests(TestCase, MeaningHelpers):
                      [3, '?:g'],
                      [4, '?:str'])
         assert_meanings_diff(added=[['?:g'], ['?:in'], ['?:str']])
+
+        string_quintet = self.new_sentence('string quintet')
+        assert_index(string_quintet,
+                     [1, '?:string'], [1, 'en:string', 'fi:jousi'],
+                     [2, '?:quintet'])
+        assert_meanings_diff(added=[['?:quintet']])
+
+        gintonic = self.new_sentence('gintonic')
+        assert_index(gintonic,
+                     [1, '?:gintonic'])
+        assert_meanings_diff(added=[['?:gintonic']])
