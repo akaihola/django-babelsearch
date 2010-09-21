@@ -160,7 +160,7 @@ class MeaningHelpers(object):
         for meanings, expected_meanings in zip(got_tree, expected_tree):
             self.assertMeanings(meanings, *expected_meanings)
 
-    def assert_meaning_changes(self, removed=(), added=()):
+    def get_meaning_changes(self):
         new_meanings = dump_meanings()
         try:
             old_meanings = self.previous_meanings_dump
@@ -173,6 +173,10 @@ class MeaningHelpers(object):
             actual_added = setify(new_meanings).difference(
                 setify(old_meanings))
         self.previous_meanings_dump = new_meanings
+        return actual_removed, actual_added
+        
+    def assert_meaning_changes(self, removed=(), added=()):
+        actual_removed, actual_added = self.get_meaning_changes()
         assert (not setify(removed).symmetric_difference(setify(actual_removed)) and
                 not setify(added).symmetric_difference(setify(actual_added))), (
             'Expected:\nremoved=%r,\nadded=%r\nGot:\nremoved=%r,\nadded=%r' % (
