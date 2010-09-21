@@ -20,15 +20,31 @@ def unique_substrings(s):
                 found.add(substring)
 
 
-def divisions(s, vocabulary):
+def divisions(s, vocabulary, max_parts=3, min_lengths=(1, 3)):
+    """Generate complete divisions of a string into words in vocabulary
+
+    * ``max_parts`` is the maximum number of parts to divide into
+    * ``min_lengths`` is the minimum part length at different levels
+      of recursion
+
+    With the value of ``min_lengths=(1, 3)``, only non-blank (length
+    >= 1) original strings are yielded, and if the string is divided,
+    each part must have at least three characters.
+    """
     for i in range(1, len(s)+1):
         substring = s[:i]
-        if substring in vocabulary:
+        if len(substring) >= min_lengths[0] and substring in vocabulary:
             if i == len(s):
                 yield substring,
             else:
-                for subsubstrings in divisions(s[i:], vocabulary):
-                    yield (substring,) + subsubstrings
+                # when recursing, pop first item from min_lengths
+                # unless it only has one
+                next_min_lengths = min_lengths[min(1, len(min_lengths)-1):]
+                for subsubstrings in divisions(s[i:], vocabulary,
+                                               max_parts=max_parts,
+                                               min_lengths=next_min_lengths):
+                    if len(subsubstrings) < max_parts:
+                        yield (substring,) + subsubstrings
 
 
 def sort_divisions(divs):
@@ -40,8 +56,10 @@ def sort_divisions(divs):
     return [item[2] for item in decdivs]
 
 
-def sorted_divisions(s, vocabulary):
-    return sort_divisions(divisions(s, vocabulary))
+def sorted_divisions(s, vocabulary, max_parts=3, min_lengths=(1, 3)):
+    return sort_divisions(
+        divisions(s, vocabulary,
+                  max_parts=max_parts, min_lengths=min_lengths))
 
 
 class Word(models.Model):
@@ -253,11 +271,11 @@ class IndexManager(models.Manager):
     def delete_for_instance(self, instance):
         model = instance.__class__
         ctype = ContentType.objects.get_for_model(model)
+        (Word.objects
+         .filter(meaning__index_entries__content_type=ctype,
+                 meaning__index_entries__object_id=instance.pk)
+         .update(frequency=F('frequency')-1))
         self.filter(content_type=ctype, object_id=instance.pk).delete()
-        words = get_instance_words(instance)
-        meanings, found_words = Meaning.objects.lookup(words)
-        Word.objects.filter(normalized_spelling__in=found_words).update(
-            frequency=F('frequency')-1)
 
     def create_for_instance(self, instance):
         """
