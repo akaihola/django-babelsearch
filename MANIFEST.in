@@ -1,0 +1,1 @@
+recursive-include babelsearch/templates *.html
