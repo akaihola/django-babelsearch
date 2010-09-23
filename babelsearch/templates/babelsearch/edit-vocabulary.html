@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+    <head>
+        <style type="text/css" media="screen">
+            .meaning_form {
+                display: inline-block;
+            }
+        </style>
+    </head>
+    <body>
+        <form method="post" action="{% url babelsearch-edit-vocabulary %}">
+            <div id="add_words_form">
+                {{ words_form }}
+            </div>
+            <div id="meanings_formset">
+                {% for form in meanings_formset.forms %}
+                    <div class="meaning_form">
+                        {{ form.meaning }}
+                        {{ form.words }}
+                    </div>
+                {% endfor %}
+                {{ meanings_formset.management_form }}
+            </div>
+            <div id="actions">
+                <input type="submit" />
+            </div>
+        </form>
+    </body>
+</html>
