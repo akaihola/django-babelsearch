@@ -319,6 +319,12 @@ class IndexEntry(models.Model):
         unique_together = ('content_type', 'object_id', 'order', 'meaning'),
         ordering = 'content_type', 'object_id', 'order',
 
+
+class ReindexQueue(models.Model):
+    type = models.CharField(max_length=40)
+    value = models.CharField(max_length=200)
+
+
 def get_index_info_for_meanings(model, meanings):
     """
     Returns a sorted list of 3-tuples for each index entry matching
