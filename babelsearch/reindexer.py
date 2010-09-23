@@ -102,3 +102,4 @@ def reindex_for_changes(callback=None):
         callback('Changed meanings: %s' % changed_meaning_pks)
         callback('Changed spellings: %s' % changed_spellings)
         reindex_for_meanings(changed_meaning_pks, changed_spellings, callback=callback)
+        return True
