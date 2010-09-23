@@ -90,6 +90,11 @@ class Word(models.Model):
         return '%s:%s/%d' % (
             self.language, repr(self.normalized_spelling)[2:-1], self.frequency)
 
+    def editformat(self):
+        return '%s%s' % (self.language and '%s:' % self.language or '',
+                         self.normalized_spelling)
+
+
 class MeaningManager(models.Manager):
 
     def create(self, *args, **kwargs):
