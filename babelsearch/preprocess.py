@@ -52,7 +52,8 @@ def resolve_field_value(instances, path):
         values.extend(value)
     return values
 
-def get_instance_words(instance):
+
+def get_instance_text(instance):
     """
     Returns a list of normalized words and figures in a registered
     model instance.  The fields whose contents are to be considered
@@ -62,4 +63,9 @@ def get_instance_words(instance):
     for fieldname in registry[instance.__class__]:
         values.extend(resolve_field_value(
                 [instance], fieldname.split('__')))
-    return get_words(u' '.join(values))
+    return u' '.join(values)
+
+
+def get_instance_words(instance):
+    text = get_instance_text(instance)
+    return get_words(text)
