@@ -31,6 +31,11 @@ def divisions(s, vocabulary, max_parts=3, min_lengths=(1, 3)):
     >= 1) original strings are yielded, and if the string is divided,
     each part must have at least three characters.
     """
+    if s and s[0].isdigit():
+        # numbers are never split
+        if s in vocabulary:
+            yield s,
+        return
     for i in range(1, len(s)+1):
         substring = s[:i]
         if len(substring) >= min_lengths[0] and substring in vocabulary:
