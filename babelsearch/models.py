@@ -87,8 +87,14 @@ class Word(models.Model):
         ordering = 'language', 'normalized_spelling',
 
     def __unicode__(self):
-        return '%s:%s/%d' % (
-            self.language, repr(self.normalized_spelling)[2:-1], self.frequency)
+        ## frequency counting currently disabled, not possible to
+        ## implement consistently in the current model
+        #return '%s:%s/%d' % (
+        #    self.language,
+        #    repr(self.normalized_spelling)[2:-1],
+        #    self.frequency)
+        return '%s:%s' % (
+            self.language, repr(self.normalized_spelling)[2:-1])
 
     def editformat(self):
         return '%s%s' % (self.language and '%s:' % self.language or '',
@@ -276,10 +282,14 @@ class IndexManager(models.Manager):
     def delete_for_instance(self, instance):
         model = instance.__class__
         ctype = ContentType.objects.get_for_model(model)
-        (Word.objects
-         .filter(meaning__index_entries__content_type=ctype,
-                 meaning__index_entries__object_id=instance.pk)
-         .update(frequency=F('frequency')-1))
+
+        ## frequency counting currently disabled, not possible to
+        ## implement consistently in the current model
+        #(Word.objects
+        # .filter(meaning__index_entries__content_type=ctype,
+        #         meaning__index_entries__object_id=instance.pk)
+        # .update(frequency=F('frequency')-1))
+
         self.filter(content_type=ctype, object_id=instance.pk).delete()
 
     def create_for_instance(self, instance):
@@ -299,7 +309,10 @@ class IndexManager(models.Manager):
                             order=order+1,
                             meaning=meaning)
         word_instances = Word.objects.filter(normalized_spelling__in=found_words)
-        word_instances.update(frequency=F('frequency')+1)
+
+        ## frequency counting currently disabled, not possible to
+        ## implement consistently in the current model
+        #word_instances.update(frequency=F('frequency')+1)
 
 
 class IndexEntry(models.Model):

@@ -101,7 +101,7 @@ class MeaningCreationTests(TestCase):
         m = Meaning.objects.create()
         m.words.create(normalized_spelling='home', language='fi')
         self.assertEqual([repr(w) for w in m.words.all()],
-                         ['<Word: fi:home/0>'])
+                         ['<Word: fi:home>'])
         m.words.create(normalized_spelling='mold', language='en')
         assert_meaning(m, 'en:mold', 'fi:home')
 
@@ -109,16 +109,16 @@ class MeaningCreationTests(TestCase):
         m = Meaning.objects.create(
             words=[('en', 'home'), ('fi', 'koti')])
         self.assertEqual([repr(w) for w in m.words.all()],
-                         ['<Word: en:home/0>', '<Word: fi:koti/0>'])
+                         ['<Word: en:home>', '<Word: fi:koti>'])
         self.assertEqual(Word.objects.count(), 2)
 
     def test_04_create_duplicate_word(self):
         m = Meaning.objects.create(
             words=[('en', 'mold'), ('fi', 'muotti')])
         self.assertEqual([repr(w) for w in m.words.all()],
-                         ['<Word: en:mold/0>', '<Word: fi:muotti/0>'])
+                         ['<Word: en:mold>', '<Word: fi:muotti>'])
         self.assertEqual(Word.objects.count(), 2)
-        self.assertEqual(repr(Word.objects.all()[1]), '<Word: fi:muotti/0>')
+        self.assertEqual(repr(Word.objects.all()[1]), '<Word: fi:muotti>')
 
     def test_05_cannot_add_duplicate_word_with_create(self):
         m = Meaning.objects.create(words=[('en', 'mold'), ('fi', 'vuoka')])
@@ -130,7 +130,7 @@ class MeaningCreationTests(TestCase):
         m = Meaning.objects.create(
             words=[('en', 'mold'), ('fi', 'muotti')])
         self.assertEqual([repr(w) for w in m.words.all()],
-                         ['<Word: en:mold/0>', '<Word: fi:muotti/0>'])
+                         ['<Word: en:mold>', '<Word: fi:muotti>'])
         mold, created = m.words.get_or_create(
             language='en', normalized_spelling='mold')
         self.assertEqual(mold, m.words.get(normalized_spelling='mold'))
@@ -327,13 +327,13 @@ class IndexerTests(TestCase, MeaningHelpers):
         self.concerto = c('en:concerto', 'fi:konsertto', 'de:konzert')
         self.sentence = Sentence.objects.create(text=u'klavierkonzert')
         self.sentence.authors.create(name='Goethe')
-        self.assertVocabulary(u'de:klavier/1 de:konzert/1 '  #debug
-                              u'en:concerto/0 en:home/0 en:mold/0 en:piano/0 '
-                              u'fi:home/0 fi:konsertto/0 fi:koti/0 fi:piano/0')
+        self.assertVocabulary(u'de:klavier de:konzert '  #debug
+                              u'en:concerto en:home en:mold en:piano '
+                              u'fi:home fi:konsertto fi:koti fi:piano')
         self.sentence.save()
-        self.assertVocabulary(u'None:goethe/1 de:klavier/1 de:konzert/1 '  #debug
-                              u'en:concerto/0 en:home/0 en:mold/0 en:piano/0 '
-                              u'fi:home/0 fi:konsertto/0 fi:koti/0 fi:piano/0')
+        self.assertVocabulary(u'None:goethe de:klavier de:konzert '  #debug
+                              u'en:concerto en:home en:mold en:piano '
+                              u'fi:home fi:konsertto fi:koti fi:piano')
         self.goethe = Meaning.objects.lookup_exact('goethe')[0]
 
     def assertWordFrequency(self, freq, *lang_words):
@@ -389,7 +389,11 @@ class IndexerTests(TestCase, MeaningHelpers):
         f=self.assertWordFrequency
         f(0, 'en:mold', 'fi:home', 'en:home', 'fi:koti', 'en:piano', 'fi:piano',
           'en:concerto', 'fi:konsertto')
-        f(1, 'de:klavier', 'de:konzert', ':goethe')
+
+        ## frequency counting currently disabled, not possible to
+        ## implement consistently in the current model
+        #f(1, 'de:klavier', 'de:konzert', ':goethe')
+        f(0, 'de:klavier', 'de:konzert', ':goethe')
 
     def test_04_raw_save_not_indexed(self):
         s = Sentence(text=u'home pianokonsertto')
@@ -413,7 +417,12 @@ class IndexerTests(TestCase, MeaningHelpers):
             s.index_entries.all(),
             1, self.mold_fungus, self.home, 2, self.piano, self.concerto)
         f=self.assertWordFrequency
-        f(1, 'fi:home', 'en:home', 'en:piano', 'fi:piano', 'fi:konsertto')
+
+        ## frequency counting currently disabled, not possible to
+        ## implement consistently in the current model
+        #f(1, 'fi:home', 'en:home', 'en:piano', 'fi:piano', 'fi:konsertto')
+        f(0, 'fi:home', 'en:home', 'en:piano', 'fi:piano', 'fi:konsertto')
+
         s.delete()
 
     def test_07_add_missing_words_to_index(self):
@@ -423,9 +432,9 @@ class IndexerTests(TestCase, MeaningHelpers):
                          ' <Meaning: 3: de:klavier,en:piano,fi:piano>,'
                          ' <Meaning: 4: de:konzert,en:concerto,fi:konsertto>,'
                          ' <Meaning: 5: None:goethe>]')
-        self.assertVocabulary(u'None:goethe/1 de:klavier/1 de:konzert/1 '
-                              u'en:concerto/0 en:home/0 en:mold/0 en:piano/0 '
-                              u'fi:home/0 fi:konsertto/0 fi:koti/0 fi:piano/0')
+        self.assertVocabulary(u'None:goethe de:klavier de:konzert '
+                              u'en:concerto en:home en:mold en:piano '
+                              u'fi:home fi:konsertto fi:koti fi:piano')
         s = Sentence.objects.create(text=u'Grieg: Concerto for piano')
         self.assertEqual([repr(m) for m in Meaning.objects.all()],
                          ['<Meaning: 1: en:mold,fi:home>',
@@ -435,10 +444,10 @@ class IndexerTests(TestCase, MeaningHelpers):
                           '<Meaning: 5: None:goethe>',
                           '<Meaning: 6: None:grieg>',
                           '<Meaning: 7: None:for>'])
-        self.assertVocabulary(u'None:for/1 None:goethe/1 None:grieg/1 '
-                              u'de:klavier/1 de:konzert/1 en:concerto/1 '
-                              u'en:home/0 en:mold/0 en:piano/1 fi:home/0 '
-                              u'fi:konsertto/0 fi:koti/0 fi:piano/1')
+        self.assertVocabulary(u'None:for None:goethe None:grieg '
+                              u'de:klavier de:konzert en:concerto '
+                              u'en:home en:mold en:piano fi:home '
+                              u'fi:konsertto fi:koti fi:piano')
         grieg = Meaning.objects.get(words__normalized_spelling='grieg')
         self.assertEqual(repr(grieg), '<Meaning: 6: None:grieg>')
         s.delete()
