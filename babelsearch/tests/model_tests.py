@@ -57,7 +57,7 @@ def assert_index(instance, *expected_meanings):
         [i.order] + [format_word(w) for w in i.meaning.words.all()]
         for i in instance.index_entries.all())
     assert actual_meanings == expected_meanings, 'Expected: %s\nGot: %s' % (
-        expected_meanings, listify(actual_meanings))
+        expected_meanings, actual_meanings)
 
 
 class MeaningPreProcessTests(TestCase):
@@ -265,11 +265,12 @@ class MeaningAnalysisTests(TestCase, MeaningHelpers):
                         ['de:konzert', 'en:concerto', 'fi:konsertto'])
 
     def test_10_lookup_extra_letter(self):
+        """Compound words not split into <2 letter parts"""
         n = self.create_meaning('fi:n')
         meanings, words = Meaning.objects.lookup_splitting(
             u'kotipianon', create_missing=False)
-        self.assertMeanings(meanings, self.home, self.piano, n)
-        self.assertEqual(words, (u'koti', u'piano', u'n'))
+        self.assertMeanings(meanings)
+        self.assertEqual(words, [])
 
     def test_11_lookup_multiple(self):
         meanings, words = Meaning.objects.lookup(['muotti', 'concerto'])
@@ -478,8 +479,8 @@ class IndexerTests(TestCase, MeaningHelpers):
                         ['?:sonata'],
                         ['?:sonaatti'],
                         ['?:viululle'])
-        assert_index(s1, (1, '?:violin'), (2, '?:sonata'))
-        assert_index(s2, (1, '?:sonaatti'), (2, '?:viululle'))
+        assert_index(s1, [1, '?:violin'], [2, '?:sonata'])
+        assert_index(s2, [1, '?:sonaatti'], [2, '?:viululle'])
 
         Meaning.objects.join(m1, m2)
 
@@ -491,8 +492,8 @@ class IndexerTests(TestCase, MeaningHelpers):
                         ['?:violin'],
                         ['?:sonaatti', '?:sonata'],
                         ['?:viululle'])
-        assert_index(s1, (1, '?:violin'), (2, '?:sonaatti', '?:sonata'))
-        assert_index(s2, (1, '?:sonaatti', '?:sonata'), (2, '?:viululle'))
+        assert_index(s1, [1, '?:violin'], [2, '?:sonaatti', '?:sonata'])
+        assert_index(s2, [1, '?:sonaatti', '?:sonata'], [2, '?:viululle'])
 
         self.assertEqual(repr(m1), '<Meaning: 7: None:sonaatti,None:sonata>')
         self.assertEqual(m2.pk, None)
