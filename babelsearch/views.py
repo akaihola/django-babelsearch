@@ -10,7 +10,13 @@ def get_tokenization_for(terms):
     return u' '.join(found_words)
 
 
-def edit_vocabulary(request):
+def _make_meaning_data(meaning):
+    return {'meaning': meaning.pk,
+            'words': [(w.language, w.normalized_spelling)
+                      for w in meaning.words.all()]}
+
+
+def edit_vocabulary(request, app_name=None, model_name=None, instance_pk=None):
     template_name = 'babelsearch/edit-vocabulary.html'
 
     if request.method == 'POST':
@@ -28,10 +34,7 @@ def edit_vocabulary(request):
                     words__normalized_spelling__in=words).distinct()
                 for meaning in new_meanings:
                     if meaning.pk not in old_meaning_pks:
-                        meanings_data.append(
-                            {'meaning': meaning.pk,
-                             'words': [(w.language, w.normalized_spelling)
-                                       for w in meaning.words.all()]})
+                        meanings_data.append(_make_meaning_data(meaning))
                 meanings_formset = MeaningsFormset(initial=meanings_data,
                                                    prefix='meanings')
     else:
