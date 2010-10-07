@@ -1,4 +1,5 @@
 from babelsearch.tests.model_tests import (
+    DivisionsTests,
     MeaningCreationTests,
     MeaningAnalysisTests,
     IndexerTests,

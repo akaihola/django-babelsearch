@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 
 from django.test import TestCase
+import unittest
 
 from django.db import IntegrityError
 from django.db.models import F
 
-from babelsearch.models import Meaning, Word, IndexEntry
+from babelsearch.models import divisions, Meaning, Word, IndexEntry
 from babelsearch.indexer import registry
 from babelsearch.tests.testapp.models import Author, Sentence
 from babelsearch.tests.tools import (listify,
@@ -14,6 +15,50 @@ from babelsearch.tests.tools import (listify,
                                      dump_meanings,
                                      assert_meanings,
                                      assert_index)
+
+
+class DivisionsTests(unittest.TestCase):
+    def assertDivision(self, s, vocabulary, expected):
+        vocabulary_words = vocabulary.split(',')
+        result = divisions(s, vocabulary_words)
+        str_result = ','.join('+'.join(r) for r in result)
+        self.assertEqual(str_result, expected)
+        
+    def test_simple_word(self):
+        self.assertDivision('abcde',
+                            vocabulary='abcde',
+                            expected='abcde')
+
+    def test_short_word(self):
+        self.assertDivision('a',
+                            vocabulary='a',
+                            expected='a')
+
+    def test_too_short_parts(self):
+        self.assertDivision('abcde',
+                            vocabulary='ab,cd,e',
+                            expected='')
+
+    def test_minimum_part_length(self):
+        self.assertDivision('abcdef',
+                            vocabulary='abc,def',
+                            expected='abc+def')
+        
+    def test_alternate_divisions(self):
+        self.assertDivision('abcdefg',
+                            vocabulary='abc,abcd,defg,efg',
+                            expected='abc+defg,abcd+efg')
+
+    def test_whole_and_division(self):
+        self.assertDivision('abcdef',
+                            vocabulary='abc,def,abcdef',
+                            expected='abc+def,abcdef')
+
+    def test_long_number_with_only_part_in_vocabulary(self):
+        self.assertDivision('12345', vocabulary='1', expected='')
+
+    def test_long_number_with_all_parts_in_vocabulary(self):
+        self.assertDivision('12345', vocabulary='1,2345', expected='')
 
 
 class MeaningCreationTests(TestCase):
