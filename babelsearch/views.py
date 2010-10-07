@@ -1,8 +1,10 @@
+from django.db.models import get_model
 from django.shortcuts import render_to_response
 from django.template import RequestContext
 
 from babelsearch.forms import WordsForm, MeaningsFormset
 from babelsearch.models import Meaning
+from babelsearch.preprocess import get_instance_text, get_words
 
 
 def get_tokenization_for(terms):
@@ -18,6 +20,9 @@ def _make_meaning_data(meaning):
 
 def edit_vocabulary(request, app_name=None, model_name=None, instance_pk=None):
     template_name = 'babelsearch/edit-vocabulary.html'
+
+    meanings_data = None
+    text = None
 
     if request.method == 'POST':
         words_form = WordsForm(request.POST, prefix='words')
@@ -38,10 +43,25 @@ def edit_vocabulary(request, app_name=None, model_name=None, instance_pk=None):
                 meanings_formset = MeaningsFormset(initial=meanings_data,
                                                    prefix='meanings')
     else:
+        if app_name and model_name and instance_pk:
+            # pre-populate formset with meanings of the given indexed
+            # model instance
+            model = get_model(app_name, model_name)
+            instance = model._default_manager.get(pk=instance_pk)
+            text = get_instance_text(instance)
+            words = get_words(text)
+            ordered_meanings, found_words = Meaning.objects.lookup_ordered(
+                words, create_missing=False)
+            meanings_data = []
+            for word in ordered_meanings:
+                for meaning in word:
+                    meanings_data.append(_make_meaning_data(meaning))
         words_form = WordsForm(prefix='words')
-        meanings_formset = MeaningsFormset(prefix='meanings')
+        meanings_formset = MeaningsFormset(initial=meanings_data,
+                                           prefix='meanings')
 
     return render_to_response(template_name,
                               {'words_form': words_form,
-                               'meanings_formset': meanings_formset},
+                               'meanings_formset': meanings_formset,
+                               'analyzed_text': text},
                               RequestContext(request));
