@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib.contenttypes import generic
 from django.contrib.contenttypes.models import ContentType
 import operator
+import sys
 
 from babelsearch.datastruct import SetList, PrefixCache
 from babelsearch.preprocess import get_words, get_instance_words
@@ -430,3 +431,14 @@ def create_babelsearch_indexes_postgresql(**kwargs):
 
 if settings.DATABASE_ENGINE.startswith('postgresql'):
     post_syncdb.connect(create_babelsearch_indexes_postgresql)
+
+
+def make_permissions(**kwargs):
+    ct, created = ContentType.objects.get_or_create(
+        model='', app_label='babelsearch', defaults={'name': 'babelsearch'})
+    p, created = Permission.objects.get_or_create(
+        codename='edit_vocabulary', content_type__pk=ct.id,
+        defaults={'name': 'Can edit vocabulary', 'content_type': ct})
+
+post_syncdb.connect(
+    make_permissions, sender=sys.modules[__name__], weak=False)
