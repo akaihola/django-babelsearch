@@ -1,16 +1,20 @@
 <!doctype html>
+{% load i18n %}
 <html>
     <head>
         <style type="text/css" media="screen">
-            .meaning_form {
-                display: inline-block;
-            }
+            #clear_form { margin: 0 0 -24px 20em; }
+            .meaning_form { display: inline-block; }
         </style>
     </head>
     <body>
         {% if analyzed_text %}
             <div class="analyzed-text">{{ analyzed_text }}</div>
         {% endif %}
+        <form id="clear_form" method="get"
+              action="{% url babelsearch-edit-vocabulary %}">
+            <input type="submit" value="{% trans "Clear" %}" />
+        </form>
         <form method="post" action="{% url babelsearch-edit-vocabulary %}">
             <div id="add_words_form">
                 {{ words_form }}
