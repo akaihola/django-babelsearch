@@ -12,10 +12,10 @@
             <div class="analyzed-text">{{ analyzed_text }}</div>
         {% endif %}
         <form id="clear_form" method="get"
-              action="{% url babelsearch-edit-vocabulary %}">
+              action="{% url babelsearch-edit-vocabulary %}">{% csrf_token %}
             <input type="submit" value="{% trans "Clear" %}" />
         </form>
-        <form method="post" action="{% url babelsearch-edit-vocabulary %}">
+        <form method="post" action="{% url babelsearch-edit-vocabulary %}">{% csrf_token %}
             <div id="add_words_form">
                 {{ words_form }}
             </div>
