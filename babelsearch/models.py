@@ -434,6 +434,8 @@ if settings.DATABASE_ENGINE.startswith('postgresql'):
 
 
 def make_permissions(**kwargs):
+    from django.contrib.contenttypes.models import ContentType
+    from django.contrib.auth.models import Permission
     ct, created = ContentType.objects.get_or_create(
         model='', app_label='babelsearch', defaults={'name': 'babelsearch'})
     p, created = Permission.objects.get_or_create(
