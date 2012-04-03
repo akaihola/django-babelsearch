@@ -429,7 +429,7 @@ def create_babelsearch_indexes_postgresql(**kwargs):
                        'ON babelsearch_word (normalized_spelling);')
     cursor.close()
 
-if settings.DATABASE_ENGINE.startswith('postgresql'):
+if settings.DATABASES['default']['ENGINE'].startswith('postgresql'):
     post_syncdb.connect(create_babelsearch_indexes_postgresql)
 
 
