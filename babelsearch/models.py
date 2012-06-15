@@ -1,5 +1,5 @@
 from django.db import models, connection
-from django.db.models import F
+from django.db.models.base import ModelBase
 from django.db.models.signals import post_syncdb
 from django.conf import settings
 from django.contrib.contenttypes import generic
@@ -344,18 +344,36 @@ class ReindexQueue(models.Model):
     value = models.CharField(max_length=200)
 
 
-def get_index_info_for_meanings(model, meanings):
+def get_index_info_for_meanings(queryset, meanings):
     """
-    Returns a sorted list of 3-tuples for each index entry matching
-    the given model and set of meanings.  The elements of the 3-tuple
-    are:
+    Returns a sorted list of 3-tuples for each index entry matching the given
+    queryset (or model) and set of meanings.  The elements of the 3-tuple are:
+
      * the primary key of the model instance
      * the order of the meaning in the instance's indexed text
      * the primary key of the meaning
+
+    A model can be provided instead of a queryset, if the results don't need to
+    be pre-filtered.
+
     """
+    # pylint: disable=W0212
+    #         Access to a protected member _meta of a client class
+    # pylint: disable=E1101
+    #         Instance of 'IndexManager' has no 'filter' member
+    # pylint: disable=W0142
+    #         Used * or ** magic
+    prefilter = {}
+    if isinstance(queryset, ModelBase):
+        model = queryset
+    else:
+        model = queryset.model
+        prefilter['{0}__in'.format(model._meta.module_name)] = queryset
     ctype = ContentType.objects.get_for_model(model)
     return (
-        IndexEntry.objects.filter(meaning__in=meanings, content_type=ctype)
+        IndexEntry.objects.filter(meaning__in=meanings,
+                                  content_type=ctype,
+                                  **prefilter)
         .values('object_id', 'order', 'meaning')
         .order_by('object_id', 'order')
         .distinct())
@@ -368,10 +386,10 @@ def calculate_score(matching_meanings, unique_search_meanings):
     """
     return 100 * len(matching_meanings.flat) / unique_search_meanings
 
-def get_scored_matches(model, meaning_search):
+def get_scored_matches(queryset, meaning_search):
     """
-    Returns a relevance-sorted list of all instances of the given
-    model which match any of the given meanings in the index.
+    Returns a relevance-sorted list of all instances in the given queryset (or
+    model) which match any of the given meanings in the index.
 
     `meaning_search` is a list of querysets of `Meaning`s, one for
     every word in the search terms
@@ -385,8 +403,12 @@ def get_scored_matches(model, meaning_search):
     {obj1_id: [[Oeuvre], [], []],
      obj2_id: [[], [Oeuvre], [Complete]],
      obj3_id: [[Bach], [Complete], [Oeuvre,ToFunction]]}
+
+    A model can be provided instead of a queryset if results don't need to be
+    filtered.
+
     """
-    rows = get_index_info_for_meanings(model, meaning_search.flat)
+    rows = get_index_info_for_meanings(queryset, meaning_search.flat)
     object_ids = set(row['object_id'] for row in rows)
     meaning_dict = dict((m.pk, m) for m in meaning_search.flat)
     instance_matches = dict((pk, SetList()) for pk in object_ids)
@@ -406,15 +428,24 @@ def get_scored_matches(model, meaning_search):
     sorted_scores = sorted(scores, reverse=True)
     return sorted_scores
 
-def get_scored_matches_for_sentence(model, sentence, offset=0, limit=50):
+
+def get_scored_matches_for_sentence(queryset, sentence, offset=0, limit=50):
     """
-    Analyses the given sentence, searches all instances of the given
-    model which match at least one word meaning in the sentence and
-    returns a list of instances in descending order of relevance.
-    Limits the list to the first 50 matches by default.
+    Analyses the given sentence, searches the given queryset (or model) for
+    instances which match at least one word meaning in the sentence and returns
+    a list of instances in descending order of relevance.  Limits the list to
+    the first 50 matches by default.
+
+    A model can be provided instead of a queryset if the results need to be
+    limited.
+
     """
-    meanings, words = Meaning.objects.lookup_sentence(sentence)
-    matches = get_scored_matches(model, meanings)[offset:offset+limit]
+    if isinstance(queryset, ModelBase):
+        model = queryset
+    else:
+        model = queryset.model
+    meanings, _words = Meaning.objects.lookup_sentence(sentence)
+    matches = get_scored_matches(queryset, meanings)[offset:offset + limit]
     instance_ids = [pk for (score, pk) in matches]
     instance_dict = model.objects.in_bulk(instance_ids)
     return [{'instance': instance_dict[pk], 'score': score}
